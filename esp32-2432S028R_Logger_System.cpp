@@ -24,6 +24,10 @@ volatile float temp_oven = 0;
 hw_timer_t* timer_read_data = NULL;
 volatile bool flag_read_data = false;
 
+// TODO: Реализовать экран для газов
+// TODO: Реализовать экран для настроек
+// TODO: Реализовать смену экранов
+
 void IRAM_ATTR change_flag() {
   flag_read_data = true;
 }
@@ -47,7 +51,14 @@ char buffer[BUFFER_SIZE];
   void my_touch_read(lv_indev_drv_t* indev, lv_indev_data_t* data);
 
   void initial_display();
+  
   void create_main_window(lv_obj_t* scr);
+  void create_gas_window(lv_obj_t* scr);
+  void create_chart_window(lv_obj_t* scr);
+  void create_settings_window(lv_obj_t* scr);
+
+  void screen_cast();
+
   static void handler_button(lv_event_t *e);
 
   void task_gui(void* param) {
@@ -74,7 +85,7 @@ char buffer[BUFFER_SIZE];
     uint16_t y;
 
     if (lcd.getTouch(&x, &y)) {
-      Serial.printf("Touch: %3d %3d\n", x, y);
+      // Serial.printf("Touch: %3d %3d\n", x, y);
       x = 319 - x; 
       data->state = LV_INDEV_STATE_PRESSED;
       data -> point.x = x;
@@ -83,6 +94,28 @@ char buffer[BUFFER_SIZE];
       data -> state = LV_INDEV_STATE_RELEASED;
     }
   }
+
+  /**
+    В данном проекте будут использоваться 4 экрана, 
+    каждый из экранов отражает одну из частей общей системы логирования, например: 
+    
+    screen_oven - это экран, который отображает такие показания, как вес пробы, 
+    температуры внутри пробы и внутри самой печи; 
+
+    screen_gas - этот экран отображает расход газов
+    
+    screen_chart - этот экран будет отображать сразу несколько графиков, 
+    каждый график представляет из зависимость компонента логирования от времени
+
+    screen_settings - это экран для настройки работы системы, при помощи этого экрана
+    пользователь может выбирать формат работы логгера, а также хранилище данных, куда будут
+    записываться сами данные 
+  */
+
+  lv_obj_t* screen_oven;
+  lv_obj_t* screen_gas;
+  lv_obj_t* screen_chart;
+  lv_obj_t* screen_settings;
 
   void initial_display() {
     lcd.init();
@@ -107,7 +140,18 @@ char buffer[BUFFER_SIZE];
     lcd.setTextColor(TFT_WHITE);
 
     lv_obj_t* scr = lv_scr_act();
-    create_main_window(scr);
+
+    screen_oven = lv_obj_create(NULL);
+    screen_gas = lv_obj_create(NULL);
+    screen_chart = lv_obj_create(NULL);
+    screen_settings = lv_obj_create(NULL);
+
+
+    create_main_window(screen_oven); // -> наполнение экрана oven
+    create_gas_window(screen_gas);
+    create_chart_window(screen_chart);
+
+    lv_scr_load(screen_oven);
   }
 
   lv_obj_t* create_panel(lv_obj_t* scr, 
@@ -144,44 +188,236 @@ char buffer[BUFFER_SIZE];
     lv_obj_align(button, align, x_position, y_position);
     return button;
   }
+  // -> window
+    void create_main_window(lv_obj_t* scr) { // -> main window
+      lv_obj_t* main_label = create_label(scr, "Direct Recover Oven", LV_ALIGN_TOP_MID, 0, 5);
 
-  void create_main_window(lv_obj_t* scr) {
-    lv_obj_t* main_label = create_label(scr, "Direct Recover Oven", LV_ALIGN_TOP_MID, 0, 5);
+      lv_obj_t* panel_temp_oven = create_panel(scr, LV_ALIGN_TOP_LEFT, 160, 70, 0, 30); 
+      lv_obj_t* label_oven_temp = create_label(panel_temp_oven, "Temp Oven", LV_ALIGN_TOP_MID, 0, 0);
 
-    lv_obj_t* panel_temp_oven = create_panel(scr, LV_ALIGN_TOP_LEFT, 160, 70, 0, 30); 
-    lv_obj_t* label_oven_temp = create_label(panel_temp_oven, "Temp Oven", LV_ALIGN_TOP_MID, 0, 0);
+      lv_obj_t* panel_temp_sample = create_panel(scr, LV_ALIGN_TOP_RIGHT, 160, 70, 0, 30); 
+      lv_obj_t* label_sample_temp = create_label(panel_temp_sample, "Temp Sample", LV_ALIGN_TOP_MID, 0, 0);
 
-    lv_obj_t* panel_temp_sample = create_panel(scr, LV_ALIGN_TOP_RIGHT, 160, 70, 0, 30); 
-    lv_obj_t* label_sample_temp = create_label(panel_temp_sample, "Temp Sample", LV_ALIGN_TOP_MID, 0, 0);
+      lv_obj_t* panel_weight = create_panel(scr, LV_ALIGN_CENTER, 320, 70, 0, 15);
+      lv_obj_t* label_weight = create_label(panel_weight, "Weight", LV_ALIGN_TOP_MID, 0, 0);
 
-    lv_obj_t* panel_weight = create_panel(scr, LV_ALIGN_CENTER, 320, 70, 0, 15);
-    lv_obj_t* label_weight = create_label(panel_weight, "Weight", LV_ALIGN_TOP_MID, 0, 0);
+      lv_obj_t* panel_button = create_panel(scr, LV_ALIGN_BOTTOM_MID, 320, 70, 0, 0);
+      lv_obj_clear_flag(panel_button, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_style_pad_all(panel_button, 0, LV_PART_MAIN);
+      
+      lv_obj_update_layout(scr);
+      lv_area_t a;
 
-    lv_obj_t* panel_button = create_panel(scr, LV_ALIGN_BOTTOM_MID, 320, 70, 0, 0);
-    lv_obj_clear_flag(panel_button, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(panel_button, 0, LV_PART_MAIN);
-    
-    lv_obj_update_layout(scr);
-    lv_area_t a;
+      lv_obj_t* button_gas = create_button(panel_button, LV_ALIGN_LEFT_MID, 100, 70, -10, 0);
+      lv_obj_t* label_gas_btn = create_label(button_gas, "Gas", LV_ALIGN_CENTER, 0, 0);
+      lv_obj_add_event_cb(button_gas, handler_button, LV_EVENT_CLICKED, (void*) "Gas");
+      
+      lv_obj_t* button_settings_btn = create_button(panel_button, LV_ALIGN_CENTER, 100, 70, 0, 0);
+      lv_obj_t* label_settings_btn = create_label(button_settings_btn, "Chart", LV_ALIGN_CENTER, 0, 0);
+      lv_obj_add_event_cb(button_settings_btn, handler_button, LV_EVENT_CLICKED, (void*) "Chart");
 
-    lv_obj_t* button_gas = create_button(panel_button, LV_ALIGN_LEFT_MID, 100, 70, -10, 0);
-    lv_obj_t* label_gas_btn = create_label(button_gas, "Gas", LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_event_cb(button_gas, handler_button, LV_EVENT_CLICKED, (void*) "Gas");
-    
-    lv_obj_t* button_settings_btn = create_button(panel_button, LV_ALIGN_CENTER, 100, 70, 0, 0);
-    lv_obj_t* label_settings_btn = create_label(button_settings_btn, "Settings", LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_event_cb(button_settings_btn, handler_button, LV_EVENT_CLICKED, (void*) "Settings");
+      lv_obj_t* button_chart_btn = create_button(panel_button, LV_ALIGN_RIGHT_MID, 100, 70, 10, 0);
+      lv_obj_t* label_chart_btn = create_label(button_chart_btn, "Settings", LV_ALIGN_CENTER, 0, 0);
+      lv_obj_add_event_cb(button_chart_btn, handler_button, LV_EVENT_CLICKED, (void*) "Settings");
+    }
 
-    lv_obj_t* button_chart_btn = create_button(panel_button, LV_ALIGN_RIGHT_MID, 100, 70, 10, 0);
-    lv_obj_t* label_chart_btn = create_label(button_chart_btn, "Chart", LV_ALIGN_CENTER, 0, 0);
-    lv_obj_add_event_cb(button_chart_btn, handler_button, LV_EVENT_CLICKED, (void*) "Chart");
-  }
+    void create_gas_window(lv_obj_t* scr) { // -> window for check gas consumption
+      lv_obj_t* main_label_gas1_panel = create_label(scr, "Gas Flow", LV_ALIGN_TOP_MID, 0, 5);
+      lv_obj_clear_flag(main_label_gas1_panel, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_scrollbar_mode(main_label_gas1_panel, LV_SCROLLBAR_MODE_OFF);
+
+      lv_obj_t* panel_gas1 = create_panel(scr, LV_ALIGN_TOP_MID, 320, 40, 0, 30);
+      lv_obj_clear_flag(panel_gas1, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_scrollbar_mode(panel_gas1, LV_SCROLLBAR_MODE_OFF);
+      lv_obj_t* label_gas1 = create_label(panel_gas1, "H2", LV_ALIGN_LEFT_MID, 0, 0);
+      lv_obj_t* label_value_gas1 = create_label(panel_gas1, "0.0", LV_ALIGN_LEFT_MID, 100, 0); // -> вынести за пределы данной функции(изменение значения)
+      lv_obj_t* btn_gas1 = create_button(panel_gas1, LV_ALIGN_TOP_MID, 40, 20, 80, -5);
+      lv_obj_set_style_bg_color(btn_gas1, lv_color_hex(0x0000CC), LV_PART_MAIN);
+      lv_obj_t* status_label_gas1 = create_label(panel_gas1, "OFF", LV_ALIGN_RIGHT_MID, 0, 0); // -> вынести за пределы данной функции(изменение значения)
+
+      lv_obj_t* panel_gas2 = create_panel(scr, LV_ALIGN_TOP_MID, 320, 40, 0, 70);
+      lv_obj_clear_flag(panel_gas2, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_scrollbar_mode(panel_gas2, LV_SCROLLBAR_MODE_OFF);
+      lv_obj_t* label_gas2 = create_label(panel_gas2, "CO", LV_ALIGN_LEFT_MID, 0, 0);
+      lv_obj_t* label_value_gas2 = create_label(panel_gas2, "0.0", LV_ALIGN_LEFT_MID, 100, 0);
+      lv_obj_t* btn_gas2 = create_button(panel_gas2, LV_ALIGN_TOP_MID, 40, 20, 80, -5);
+      lv_obj_set_style_bg_color(btn_gas2, lv_color_hex(0x0000CC), LV_PART_MAIN);
+      lv_obj_t* status_label_gas2 = create_label(panel_gas2, "OFF", LV_ALIGN_RIGHT_MID, 0, 0);
+
+      lv_obj_t* panel_gas3 = create_panel(scr, LV_ALIGN_TOP_MID, 320, 40, 0, 110);
+      lv_obj_clear_flag(panel_gas3, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_scrollbar_mode(panel_gas3, LV_SCROLLBAR_MODE_OFF);
+      lv_obj_t* label_gas3 = create_label(panel_gas3, "CO2", LV_ALIGN_LEFT_MID, 0, 0);
+      lv_obj_t* label_value_gas3 = create_label(panel_gas3, "0.0", LV_ALIGN_LEFT_MID, 100, 0);
+      lv_obj_t* btn_gas3 = create_button(panel_gas3, LV_ALIGN_TOP_MID, 40, 20, 80, -5);
+      lv_obj_set_style_bg_color(btn_gas3, lv_color_hex(0x0000CC), LV_PART_MAIN); // -> 0x33FF33 - зеленый
+      lv_obj_t* status_label_gas3 = create_label(panel_gas3, "OFF", LV_ALIGN_RIGHT_MID, 0, 0);
+      
+      lv_obj_t* panel_gas4 = create_panel(scr, LV_ALIGN_BOTTOM_MID, 320, 40, 0, -50);
+      lv_obj_clear_flag(panel_gas4, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_scrollbar_mode(panel_gas4, LV_SCROLLBAR_MODE_OFF);
+      lv_obj_t* label_gas4 = create_label(panel_gas4, "N2", LV_ALIGN_LEFT_MID, 0, 0);
+      lv_obj_t* label_value_gas4 = create_label(panel_gas4, "0.0", LV_ALIGN_LEFT_MID, 100, 0);
+      lv_obj_t* btn_gas4 = create_button(panel_gas4, LV_ALIGN_TOP_MID, 40, 20, 80, -5);
+      lv_obj_set_style_bg_color(btn_gas4, lv_color_hex(0x0000CC), LV_PART_MAIN);
+      lv_obj_t* status_label_gas4 = create_label(panel_gas4, "OFF", LV_ALIGN_RIGHT_MID, 0, 0);
+
+      lv_obj_t* panel_menu = create_panel(scr, LV_ALIGN_BOTTOM_MID, 320, 50, 0, 0);
+      lv_obj_clear_flag(panel_menu, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_scrollbar_mode(panel_menu, LV_SCROLLBAR_MODE_OFF);
+
+      lv_obj_t* btn_main_menu = create_button(panel_menu, LV_ALIGN_LEFT_MID, 100, 70, -10, 0);
+      lv_obj_t* btn_label_main = create_label(btn_main_menu, "Oven", LV_ALIGN_CENTER, 0, 0);
+      lv_obj_add_event_cb(btn_main_menu, handler_button, LV_EVENT_CLICKED, (void*) "Oven");
+
+      lv_obj_t* btn_chart = create_button(panel_menu, LV_ALIGN_CENTER, 100, 70, 0, 0);
+      lv_obj_t* btn_label_chart = create_label(btn_chart, "Chart", LV_ALIGN_CENTER, 0, 0);
+      lv_obj_add_event_cb(btn_chart, handler_button, LV_EVENT_CLICKED, (void*) "Chart");
+
+      lv_obj_t* btn_settings = create_button(panel_menu, LV_ALIGN_RIGHT_MID, 100, 70, 10, 0);
+      lv_obj_t* btn_label_settings = create_label(btn_settings, "Settings", LV_ALIGN_RIGHT_MID, 0, 0);
+      lv_obj_add_event_cb(btn_settings, handler_button, LV_EVENT_CLICKED, (void*) "Settings");
+    }
+
+
+    /**
+      Экран графиков должен отображать сразу несколько графиков
+      (P.S тз: 
+        Помимо мнемосхем, отображающих текущие значения параметров опыта 
+        (температура, вес, расход газов, расстояние, время опыта), 
+        иметь возможность построения графиков изменения параметров за определенное время;
+      )
+      
+      Поэтому данный экран должен отображать такие графики:
+      1) y(t, °C) = x(t) -> изменение температуры от времени
+      2) y(w, g) = x(t) -> изменение веса от времени
+      3) y(g) = x(t) -> {
+        изменение расхода H2 от времени; 
+        изменение расхода CO от времени; 
+        изменение расхода CO2 от времени; 
+        изменение расхода N2 от времени
+      } -> С учетом этого нужно понимать какие газы используются в опыте
+    */
+
+    lv_obj_t* chart_tmp;
+    lv_obj_t* chart_weight;
+
+    lv_obj_t* chart_gas_H2;
+    lv_obj_t* chart_gas_CO;
+    lv_obj_t* chart_gas_CO2;
+    lv_obj_t* chart_gas_N2;
+
+    lv_obj_t* lbl_name_chart;
+    lv_obj_t* lbl_value;
+
+    lv_obj_t* create_chart(lv_obj_t* scr, 
+                           int width, 
+                           int height,
+                           lv_align_t align,
+                           int x_position,
+                           int y_position) {
+      lv_obj_t* chart = lv_chart_create(scr);
+      
+      lv_obj_set_size(chart, width, height);
+      lv_obj_align(chart, align, x_position, y_position);
+      
+      lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
+
+      lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, 0, 1200);
+      lv_chart_set_point_count(chart, 30);
+
+
+      lv_chart_set_div_line_count(chart, 6, 8);
+
+      lv_obj_set_style_bg_color(chart, lv_color_hex(0x15191E), LV_PART_MAIN);
+      lv_obj_set_style_bg_opa(chart, LV_OPA_COVER, LV_PART_MAIN);
+      return chart;
+    }
+
+
+    void create_chart_window(lv_obj_t* scr) { // -> window chart
+      lv_obj_t* panel_chart = create_panel(scr, LV_ALIGN_CENTER, 320, 185, 0, -30);
+      lv_obj_clear_flag(panel_chart, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_scrollbar_mode(panel_chart, LV_SCROLLBAR_MODE_OFF);
+      
+      lv_obj_t* lbl_main = create_label(panel_chart, "Chart Window", LV_ALIGN_TOP_MID, 0, -10);
+
+      lbl_name_chart = create_label(panel_chart, "Temperature Chart", LV_ALIGN_TOP_MID, 0, 10); // -> labek change
+
+      chart_tmp = create_chart(panel_chart, 250, 100, LV_ALIGN_CENTER, 0, 0); // -> chart change
+
+
+      lv_obj_t* btn_back_chart = create_button(panel_chart, LV_ALIGN_BOTTOM_LEFT, 40, 25, 70, 5);
+      lv_obj_t* lbl_btn_back = create_label(btn_back_chart, "Back", LV_ALIGN_CENTER, 0, 0);
+      lv_obj_add_event_cb(btn_back_chart, handler_button, LV_EVENT_CLICKED, (void*) "Back");
+
+
+      lv_obj_t* btn_next_chart = create_button(panel_chart, LV_ALIGN_BOTTOM_LEFT, 40, 25, 20, 5);
+      lv_obj_t* lbl_btn_next = create_label(btn_next_chart, "Next", LV_ALIGN_CENTER, 0, 0);
+      lv_obj_add_event_cb(btn_next_chart, handler_button, LV_EVENT_CLICKED, (void*) "Next");
+
+
+      lv_obj_t* lbl_sensor = create_label(panel_chart, "Temp Value:", LV_ALIGN_BOTTOM_RIGHT, -50, 0);
+      lbl_value = create_label(panel_chart, "0.0", LV_ALIGN_BOTTOM_RIGHT, -20, 0);
+
+      lv_obj_t* panel_btn = create_panel(scr, LV_ALIGN_BOTTOM_MID, 320, 60, 0, 0);
+      lv_obj_clear_flag(panel_btn, LV_OBJ_FLAG_SCROLLABLE);
+      lv_obj_set_scrollbar_mode(panel_chart, LV_SCROLLBAR_MODE_OFF);
+
+      lv_obj_t* btn_main_window = create_button(panel_btn, LV_ALIGN_LEFT_MID, 100, 60, -10, 0);
+      lv_obj_t* lbl_btn_main_window = create_label(btn_main_window, "Oven", LV_ALIGN_CENTER, 0, 0);
+      lv_obj_add_event_cb(btn_main_window, handler_button, LV_EVENT_CLICKED, (void*) "Oven");
+
+      lv_obj_t* btn_gas_window = create_button(panel_btn, LV_ALIGN_CENTER, 100, 60, 0, 0);
+      lv_obj_t* lbl_btn_gas_window = create_label(btn_gas_window, "Gas", LV_ALIGN_CENTER, 0, 0);
+      lv_obj_add_event_cb(btn_gas_window, handler_button, LV_EVENT_CLICKED, (void*) "Gas");
+
+      lv_obj_t* btn_settings_window = create_button(panel_btn, LV_ALIGN_RIGHT_MID, 100, 60, 10, 0);
+      lv_obj_t* lbl_btn_settings_window = create_label(btn_settings_window, "Settings", LV_ALIGN_CENTER, 0, 0);
+      lv_obj_add_event_cb(btn_settings_window, handler_button, LV_EVENT_CLICKED, (void*) "Settings");
+
+    }
+
+    void create_settings_window(lv_obj_t* scr) { // -> window settings
+
+    }
+  // -> window
 
   // -> handler button
     static void handler_button(lv_event_t *e) {
-      const char* name = (const char*) lv_event_get_user_data(e);
-      lv_obj_t *obj = lv_event_get_target(e);
-      Serial.printf("Clicked: %s (%p)\n", name, obj);
+      const char* name = (const char*) lv_event_get_user_data(e); // -> Определение нажатие кнопки по lbl_btn
+
+
+      /***
+        т.к при нажатии на кнопку lv_event_get_user_data(e); 
+        параметр данной функции будет содержать label кнопки на которую мы нажали. 
+        Далее идет сравнение строк C при помощи метода strcmp(). Данная функци вернет 0, 
+        если строки полностью одинаковы, в противном случае она вернет значения отличные
+        от 0
+      */
+
+
+      if (strcmp(name, "Oven") == 0) {
+        lv_scr_load(screen_oven);
+      } else if (strcmp(name, "Gas") == 0) {
+        lv_scr_load(screen_gas);
+      } else if (strcmp(name, "Chart") == 0) {
+        lv_scr_load(screen_chart);
+      } else if (strcmp(name, "Settings") == 0) {
+        lv_scr_load(screen_settings);
+      }
+
+
+      if (strcmp(name, "Next") == 0) {
+        Serial.println("btn with lbl Next - input");
+
+
+
+
+
+      } else if (strcmp(name, "Back") == 0) {
+        Serial.println("btn with lbl Back - input");
+      }
     }
   // -> handler button
 
