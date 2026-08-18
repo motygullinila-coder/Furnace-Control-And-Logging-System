@@ -24,10 +24,6 @@ volatile float temp_oven = 0;
 hw_timer_t* timer_read_data = NULL;
 volatile bool flag_read_data = false;
 
-// TODO: Реализовать экран для газов
-// TODO: Реализовать экран для настроек
-// TODO: Реализовать смену экранов
-
 void IRAM_ATTR change_flag() {
   flag_read_data = true;
 }
@@ -85,7 +81,6 @@ char buffer[BUFFER_SIZE];
     uint16_t y;
 
     if (lcd.getTouch(&x, &y)) {
-      // Serial.printf("Touch: %3d %3d\n", x, y);
       x = 319 - x; 
       data->state = LV_INDEV_STATE_PRESSED;
       data -> point.x = x;
@@ -299,16 +294,40 @@ char buffer[BUFFER_SIZE];
       } -> С учетом этого нужно понимать какие газы используются в опыте
     */
 
-    lv_obj_t* chart_tmp;
-    lv_obj_t* chart_weight;
-
-    lv_obj_t* chart_gas_H2;
-    lv_obj_t* chart_gas_CO;
-    lv_obj_t* chart_gas_CO2;
-    lv_obj_t* chart_gas_N2;
-
     lv_obj_t* lbl_name_chart;
     lv_obj_t* lbl_value;
+
+    const char* arr_lbls[] = {
+      "Temperature Chart",
+      "Weight Chart",
+      "Gas H2 Chart",
+      "Gas CO Chart",
+      "Gas CO2 Chart",
+      "Gas N2 Chart"
+    };
+
+    uint8_t current_element_arr_lbs = 0;
+    #define ALL_ELEMENTS_LBLS 6
+
+
+    lv_obj_t* chart;
+    lv_chart_series_t* series_chart; // -> series for charts
+    uint32_t value_series[] = {100, 200, 300, 150, 320, 310, 220, 186, 163, 101};
+    uint8_t current_element_arr_value_series = 0;
+    #define ALL_ELEMENTS_ARRAY_VALUE_SERIES 10 
+
+    lv_obj_t* lbl_sensor;
+    const char* lbl_txt_sensor_arr[] = {
+      "Temp Value",
+      "Weight Value",
+      "Gas_H2 Value",
+      "Gas_CO Value",
+      "Gas_CO2 Value",
+      "Gas_N2 Value"
+    };
+    uint8_t current_element_lbl_txt_sensor_arr = 0;
+    #define ALL_ELEMENTS_ARRAY_LBL_SENSOR 6 
+
 
     lv_obj_t* create_chart(lv_obj_t* scr, 
                            int width, 
@@ -342,9 +361,22 @@ char buffer[BUFFER_SIZE];
       
       lv_obj_t* lbl_main = create_label(panel_chart, "Chart Window", LV_ALIGN_TOP_MID, 0, -10);
 
-      lbl_name_chart = create_label(panel_chart, "Temperature Chart", LV_ALIGN_TOP_MID, 0, 10); // -> labek change
+      lbl_name_chart = create_label(panel_chart, arr_lbls[current_element_arr_lbs], LV_ALIGN_TOP_MID, 0, 10); // -> labek change
+      
+      chart = create_chart(panel_chart, 250, 100, LV_ALIGN_CENTER, 0, 0); // -> chart create 
+      series_chart = lv_chart_add_series(chart, 
+                                         lv_palette_main(LV_PALETTE_RED), 
+                                         LV_CHART_AXIS_PRIMARY_Y
+      ); // -> series for chart
 
-      chart_tmp = create_chart(panel_chart, 250, 100, LV_ALIGN_CENTER, 0, 0); // -> chart change
+      for (int i = 1; i < 10; i++) {
+        lv_chart_set_next_value(chart, series_chart, 
+                                random(((i * value_series[current_element_arr_value_series]) - 50), 
+                                (i * value_series[current_element_arr_value_series]))
+        );
+      } // -> тестовая серия для графика => нужно обновлять!
+
+      lv_chart_refresh(chart);
 
 
       lv_obj_t* btn_back_chart = create_button(panel_chart, LV_ALIGN_BOTTOM_LEFT, 40, 25, 70, 5);
@@ -357,7 +389,7 @@ char buffer[BUFFER_SIZE];
       lv_obj_add_event_cb(btn_next_chart, handler_button, LV_EVENT_CLICKED, (void*) "Next");
 
 
-      lv_obj_t* lbl_sensor = create_label(panel_chart, "Temp Value:", LV_ALIGN_BOTTOM_RIGHT, -50, 0);
+      lbl_sensor = create_label(panel_chart, lbl_txt_sensor_arr[current_element_lbl_txt_sensor_arr], LV_ALIGN_BOTTOM_RIGHT, -50, 0);
       lbl_value = create_label(panel_chart, "0.0", LV_ALIGN_BOTTOM_RIGHT, -20, 0);
 
       lv_obj_t* panel_btn = create_panel(scr, LV_ALIGN_BOTTOM_MID, 320, 60, 0, 0);
@@ -378,7 +410,47 @@ char buffer[BUFFER_SIZE];
 
     }
 
+
+    /**
+      Для того чтобы создать окно настроек логгера разберем то, что пользователь может настраивать:
+      
+      1) Так как у данного логера есть возможность записывать данные в память -> LittleFS, 
+      также пользователь может записывать данные на отдельный носитель -> SD,
+      а также пользователь может записывать данные в Google таблицы -> Google Sheet
+
+      Из этого списка следует, что пользователь решает то, куда будут записываться данные
+
+      P.S. Запись в Google Sheets может быть реализована только тогда, 
+      когда пользователь подключен к инету => Пользователь должен видеть источники wifi-сети, 
+      а также пользователь должен иметь возможность подключаться к выбранной сети
+
+      2) Опционально, пользователь может управлять яркостью дисплея
+
+      3) Пользователь сам должен решать с какой частотой данные будут обрабатываться(
+        получение данных,
+        отображение данных,
+        запись данных
+      ) => следовательно данный пункт тоже должен быть включен в систему настроек
+
+      Итог: На данный момент окно настроек - settings_window будет иметь 3-4 окна.
+            Первое окно - Настройка подключения к сети wifi -> Должна быть возможность пропустить данную
+            настройку
+            P.S. добавить уровень сигнала сети wifi
+
+            Второе окно - Настройка записи данных -> Должна быть реализована возможность выбора места хранилища,
+            а также должна быть реализована логика проверки подключения к сети, если выбран вариант записи данных
+            в Google-Sheets
+
+            Третье окно - Настройка скорости считывания данных -> Пользователю должна быть дана возможность
+            выбирать скорость считывания данных с датчиков. 
+            P.S. Данная логика должна быть реализована при помощи прерываний
+
+            Четвертое окно(Опционально) - Настройка яркости экрана -> Пользователю предоставляется возможность
+            управлять яркостью экрана.
+    **/
     void create_settings_window(lv_obj_t* scr) { // -> window settings
+
+      // -> TODO: Реализовать экран для настроек
 
     }
   // -> window
@@ -409,14 +481,78 @@ char buffer[BUFFER_SIZE];
 
 
       if (strcmp(name, "Next") == 0) {
-        Serial.println("btn with lbl Next - input");
+        // Serial.println("btn with lbl Next - input");
+
+        current_element_arr_lbs++;
+
+        if (current_element_arr_lbs >= ALL_ELEMENTS_LBLS) {
+          current_element_arr_lbs = 0;
+        }
+
+        lv_label_set_text(lbl_name_chart, arr_lbls[current_element_arr_lbs]);
 
 
+        // -> очистить грфик
+        lv_chart_set_all_value(chart, series_chart, LV_CHART_POINT_NONE);
+        lv_chart_refresh(chart);
+
+        current_element_arr_value_series++;
+        if (current_element_arr_value_series >= ALL_ELEMENTS_ARRAY_VALUE_SERIES) {
+          current_element_arr_value_series = 0;
+        }
 
 
+        for (int i = 1; i < 10; i++) {
+          lv_chart_set_next_value(chart, series_chart, 
+                                  random(((i * value_series[current_element_arr_value_series]) - 50), 
+                                  (i * value_series[current_element_arr_value_series]))
+          );
+        }
+
+
+        current_element_lbl_txt_sensor_arr++;
+        if (current_element_lbl_txt_sensor_arr >= ALL_ELEMENTS_ARRAY_LBL_SENSOR) {
+          current_element_lbl_txt_sensor_arr = 0;
+        }
+        lv_label_set_text(lbl_sensor, lbl_txt_sensor_arr[current_element_lbl_txt_sensor_arr]);
+
+        // -> TODO: сделать окно этапов опытов + реализация смены этапов 
 
       } else if (strcmp(name, "Back") == 0) {
-        Serial.println("btn with lbl Back - input");
+
+
+
+        if (current_element_arr_lbs <= 0) {
+          current_element_arr_lbs = ALL_ELEMENTS_LBLS;
+        }
+
+        current_element_arr_lbs--;
+
+        lv_label_set_text(lbl_name_chart, arr_lbls[current_element_arr_lbs]);
+
+
+        lv_chart_set_all_value(chart, series_chart, LV_CHART_POINT_NONE);
+        lv_chart_refresh(chart);
+
+        if (current_element_arr_value_series <= 0) {
+          current_element_arr_value_series = ALL_ELEMENTS_ARRAY_VALUE_SERIES;
+        }
+
+        current_element_arr_value_series--;
+
+        for (int i = 1; i < 10; i++) {
+          lv_chart_set_next_value(chart, series_chart, 
+                                  random(((i * value_series[current_element_arr_value_series]) - 50), 
+                                  (i * value_series[current_element_arr_value_series]))
+          );
+        }
+
+        if (current_element_lbl_txt_sensor_arr <= 0) {
+          current_element_lbl_txt_sensor_arr = ALL_ELEMENTS_ARRAY_LBL_SENSOR;
+        }
+        current_element_lbl_txt_sensor_arr--;
+        lv_label_set_text(lbl_sensor, lbl_txt_sensor_arr[current_element_lbl_txt_sensor_arr]);
+
       }
     }
   // -> handler button
